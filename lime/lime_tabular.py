@@ -184,10 +184,9 @@ class LimeTabularExplainer(object):
         self.feature_selection = feature_selection
         self.base = lime_base.LimeBase(kernel, verbose, random_state=self.random_state)
 
-        if self.scaling:
-            self.scaler = sklearn.preprocessing.StandardScaler(with_mean=False)
-            self.scaler = None
-            self.scaler.fit(training_data)
+        self.scaler = sklearn.preprocessing.StandardScaler(with_mean=False)
+        self.scaler = None
+        self.scaler.fit(training_data)
 
 
         self.class_names = class_names
@@ -206,9 +205,8 @@ class LimeTabularExplainer(object):
             self.feature_values[feature] = values
             self.feature_frequencies[feature] = (np.array(frequencies) / float(sum(frequencies)))
 
-            if self.scaling:
-                self.scaler.mean_[feature] = 0
-                self.scaler.scale_[feature] = 1
+            self.scaler.mean_[feature] = 0
+            self.scaler.scale_[feature] = 1
 
 
     @staticmethod
