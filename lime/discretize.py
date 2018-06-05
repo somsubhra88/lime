@@ -18,27 +18,29 @@ class BaseDiscretizer():
 
     __metaclass__ = ABCMeta  # abstract class
 
-    def __init__(self, data, categorical_features, feature_names, labels=None, random_state=None):
+    def __init__(self, data, categorical_features, feature_names, labels = None, random_state = None):
         """Initializer
         Args:
             data: numpy 2d array
-            categorical_features: list of indices (ints) corresponding to the
-                categorical columns. These features will not be discretized.
-                Everything else will be considered continuous, and will be
-                discretized.
-            categorical_names: map from int to list of names, where
-                categorical_names[x][y] represents the name of the yth value of
-                column x.
-            feature_names: list of names (strings) corresponding to the columns
-                in the training data.
+            categorical_features: list of indices (ints) corresponding to the categorical columns. These features will
+                                  not be discretized. Everything else will be considered continuous, and will be
+                                  discretized.
+            categorical_names: map from int to list of names, where categorical_names[x][y] represents the name of
+                               the yth value of column x.
+            feature_names: list of names (strings) corresponding to the columns in the training data.
         """
-        self.to_discretize = ([x for x in range(data.shape[1])
-                              if x not in categorical_features])
+        self.to_discretize = ([x for x in range(data.shape[1]) if x not in categorical_features])
+        # Stores the name of the bins of every feature
         self.names = {}
+        # Stores a inline function to bucketize the continuous  variables
         self.lambdas = {}
+        # Dictionary of all the numerical features, every dictionary items contains a list of means
         self.means = {}
+        # Dictionary of all the numerical features, every dictionary items contains a list of standard deviation
         self.stds = {}
+        # Lower boundaries of all the bins
         self.mins = {}
+        # Upper boundaries of all the bins
         self.maxs = {}
         self.random_state = check_random_state(random_state)
 
@@ -53,11 +55,10 @@ class BaseDiscretizer():
 
             self.names[feature] = ['%s <= %.2f' % (name, qts[0])]
             for i in range(n_bins - 1):
-                self.names[feature].append('%.2f < %s <= %.2f' %
-                                           (qts[i], name, qts[i + 1]))
+                self.names[feature].append('%.2f < %s <= %.2f' % (qts[i], name, qts[i + 1]))
             self.names[feature].append('%s > %.2f' % (name, qts[n_bins - 1]))
 
-            self.lambdas[feature] = lambda x, qts=qts: np.searchsorted(qts, x)
+            self.lambdas[feature] = lambda x, qts =  qts: np.searchsorted(qts, x)
             discretized = self.lambdas[feature](data[:, feature])
 
             self.means[feature] = []
@@ -74,11 +75,7 @@ class BaseDiscretizer():
 
     @abstractmethod
     def bins(self, data, labels):
-        """
-        To be overridden
-        Returns for each feature to discretize the boundaries
-        that form each bin of the discretizer
-        """
+        """ To be overridden Returns for each feature to discretize the boundaries that form each bin of the discretizer """
         raise NotImplementedError("Must override bins() method")
 
     def discretize(self, data):
@@ -93,8 +90,7 @@ class BaseDiscretizer():
             if len(data.shape) == 1:
                 ret[feature] = int(self.lambdas[feature](ret[feature]))
             else:
-                ret[:, feature] = self.lambdas[feature](
-                    ret[:, feature]).astype(int)
+                ret[:, feature] = self.lambdas[feature](ret[:, feature]).astype(int)
         return ret
 
     def undiscretize(self, data):
@@ -106,14 +102,12 @@ class BaseDiscretizer():
             stds = self.stds[feature]
 
             def get_inverse(q):
-                return max(mins[q],
-                           min(self.random_state.normal(means[q], stds[q]), maxs[q]))
+                return max(mins[q], min(self.random_state.normal(means[q], stds[q]), maxs[q]))
             if len(data.shape) == 1:
                 q = int(ret[feature])
                 ret[feature] = get_inverse(q)
             else:
-                ret[:, feature] = (
-                    [get_inverse(int(x)) for x in ret[:, feature]])
+                ret[:, feature] = ([get_inverse(int(x)) for x in ret[:, feature]])
         return ret
 
 
@@ -141,28 +135,27 @@ class DecileDiscretizer(BaseDiscretizer):
     def bins(self, data, labels):
         bins = []
         for feature in self.to_discretize:
-            qts = np.array(np.percentile(data[:, feature],
-                                         [10, 20, 30, 40, 50, 60, 70, 80, 90]))
+            qts = np.array(np.percentile(data[:, feature], [10, 20, 30, 40, 50, 60, 70, 80, 90]))
             bins.append(qts)
         return bins
 
 
 class EntropyDiscretizer(BaseDiscretizer):
-    def __init__(self, data, categorical_features, feature_names, labels=None, random_state=None):
+    def __init__(self, data, categorical_features, feature_names, labels = None, random_state = None):
         if(labels is None):
-            raise ValueError('Labels must be not None when using \
-                             EntropyDiscretizer')
-        BaseDiscretizer.__init__(self, data, categorical_features,
-                                 feature_names, labels=labels,
-                                 random_state=random_state)
+            raise ValueError('Labels must be not None when using EntropyDiscretizer')
+        BaseDiscretizer.__init__(self,
+                                 data,
+                                 categorical_features,
+                                 feature_names,
+                                 labels = labels,
+                                 random_state = random_state)
 
     def bins(self, data, labels):
         bins = []
         for feature in self.to_discretize:
             # Entropy splitting / at most 8 bins so max_depth=3
-            dt = sklearn.tree.DecisionTreeClassifier(criterion='entropy',
-                                                     max_depth=3,
-                                                     random_state=self.random_state)
+            dt = sklearn.tree.DecisionTreeClassifier(criterion = 'entropy', max_depth = 3, random_state = self.random_state)
             x = np.reshape(data[:, feature], (-1, 1))
             dt.fit(x, labels)
             qts = dt.tree_.threshold[np.where(dt.tree_.children_left > -1)]

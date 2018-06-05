@@ -98,61 +98,54 @@ class LimeTabularExplainer(object):
 
     def __init__(self,
                  training_data,
-                 mode="classification",
-                 training_labels=None,
-                 feature_names=None,
-                 categorical_features=None,
-                 categorical_names=None,
-                 kernel_width=None,
-                 verbose=False,
-                 class_names=None,
-                 feature_selection='auto',
-                 discretize_continuous=True,
-                 discretizer='quartile',
-                 sample_around_instance=False,
-                 random_state=None):
+                 mode = "classification",
+                 training_labels = None,
+                 feature_names = None,
+                 categorical_features = None,
+                 categorical_names = None,
+                 kernel_width = None,
+                 verbose = False,
+                 class_names = None,
+                 feature_selection = 'auto',
+                 discretize_continuous = True,
+                 discretizer = 'quartile',
+                 sample_around_instance = False,
+                 random_state = None,
+                 scaling = True):
         """Init function.
-
         Args:
             training_data: numpy 2d array
             mode: "classification" or "regression"
-            training_labels: labels for training data. Not required, but may be
-                used by discretizer.
-            feature_names: list of names (strings) corresponding to the columns
-                in the training data.
-            categorical_features: list of indices (ints) corresponding to the
-                categorical columns. Everything else will be considered
-                continuous. Values in these columns MUST be integers.
-            categorical_names: map from int to list of names, where
-                categorical_names[x][y] represents the name of the yth value of
-                column x.
-            kernel_width: kernel width for the exponential kernel.
-                If None, defaults to sqrt (number of columns) * 0.75
+            training_labels: labels for training data. Not required, but may be used by discretizer.
+            feature_names: list of names (strings) corresponding to the columns in the training data.
+            categorical_features: list of indices (ints) corresponding to the categorical columns. Everything else will
+                                  be considered continuous. Values in these columns MUST be integers.
+            categorical_names: map from int to list of names, where  categorical_names[x][y] represents the name of the
+                               yth value of column x.
+            kernel_width: kernel width for the exponential kernel. If None, defaults to sqrt (number of columns) * 0.75
             verbose: if true, print local prediction values from linear model
-            class_names: list of class names, ordered according to whatever the
-                classifier is using. If not present, class names will be '0',
-                '1', ...
-            feature_selection: feature selection method. can be
-                'forward_selection', 'lasso_path', 'none' or 'auto'.
-                See function 'explain_instance_with_data' in lime_base.py for
-                details on what each of the options does.
-            discretize_continuous: if True, all non-categorical features will
-                be discretized into quartiles.
-            discretizer: only matters if discretize_continuous is True. Options
-                are 'quartile', 'decile', 'entropy' or a BaseDiscretizer
-                instance.
-            sample_around_instance: if True, will sample continuous features
-                in perturbed samples from a normal centered at the instance
-                being explained. Otherwise, the normal is centered on the mean
-                of the feature data.
-            random_state: an integer or numpy.RandomState that will be used to
-                generate random numbers. If None, the random state will be
-                initialized using the internal numpy seed.
+            class_names: list of class names, ordered according to whatever the classifier is using. If not present,
+                         class names will be '0', '1', ...
+            feature_selection: feature selection method. can be 'forward_selection', 'lasso_path', 'none' or 'auto'.
+                               See function 'explain_instance_with_data' in lime_base.py for  details on what each of
+                               the options does.
+            discretize_continuous: if True, all non-categorical features will be discretized into quartiles.
+            discretizer: only matters if discretize_continuous is True. Options are 'quartile',
+                         'decile', 'entropy' or a BaseDiscretizer instance.
+            sample_around_instance: if True, will sample continuous features in perturbed samples from a normal
+                                    centered at the instance being explained. Otherwise, the normal is centered on the
+                                    mean of the feature data.
+            random_state: an integer or numpy.RandomState that will be used to generate random numbers. If None, the
+                          random state will be initialized using the internal numpy seed.
         """
         self.random_state = check_random_state(random_state)
         self.mode = mode
         self.categorical_names = categorical_names or {}
         self.sample_around_instance = sample_around_instance
+        self.scaling = scaling
+        # Max Min Data Storing for capping at the time of drawing sample
+        self.upper_limit = np.max(training_data, axis=0)
+        self.lower_limit = np.min(training_data, axis=0)
 
         if categorical_features is None:
             categorical_features = []
@@ -165,26 +158,21 @@ class LimeTabularExplainer(object):
         self.discretizer = None
         if discretize_continuous:
             if discretizer == 'quartile':
-                self.discretizer = QuartileDiscretizer(
-                        training_data, self.categorical_features,
-                        self.feature_names, labels=training_labels)
+                self.discretizer = QuartileDiscretizer(training_data, self.categorical_features, self.feature_names, labels=training_labels)
+
             elif discretizer == 'decile':
-                self.discretizer = DecileDiscretizer(
-                        training_data, self.categorical_features,
-                        self.feature_names, labels=training_labels)
+                self.discretizer = DecileDiscretizer(training_data, self.categorical_features, self.feature_names, labels=training_labels)
+
             elif discretizer == 'entropy':
-                self.discretizer = EntropyDiscretizer(
-                        training_data, self.categorical_features,
-                        self.feature_names, labels=training_labels)
+                self.discretizer = EntropyDiscretizer(training_data, self.categorical_features, self.feature_names, labels=training_labels)
+
             elif isinstance(discretizer, BaseDiscretizer):
                 self.discretizer = discretizer
             else:
-                raise ValueError('''Discretizer must be 'quartile',''' +
-                                 ''' 'decile', 'entropy' or a''' +
-                                 ''' BaseDiscretizer instance''')
+                raise ValueError("Discretizer must be \'quartile\', \'decile\', \'entropy\' or a  BaseDiscretizer instance")
+
             self.categorical_features = list(range(training_data.shape[1]))
-            discretized_training_data = self.discretizer.discretize(
-                    training_data)
+            discretized_training_data = self.discretizer.discretize(training_data)
 
         if kernel_width is None:
             kernel_width = np.sqrt(training_data.shape[1]) * .75
@@ -195,10 +183,14 @@ class LimeTabularExplainer(object):
 
         self.feature_selection = feature_selection
         self.base = lime_base.LimeBase(kernel, verbose, random_state=self.random_state)
-        self.scaler = None
+
+        if self.scaling:
+            self.scaler = sklearn.preprocessing.StandardScaler(with_mean=False)
+            self.scaler = None
+            self.scaler.fit(training_data)
+
+
         self.class_names = class_names
-        self.scaler = sklearn.preprocessing.StandardScaler(with_mean=False)
-        self.scaler.fit(training_data)
         self.feature_values = {}
         self.feature_frequencies = {}
 
@@ -212,10 +204,12 @@ class LimeTabularExplainer(object):
             values, frequencies = map(list, zip(*(feature_count.items())))
 
             self.feature_values[feature] = values
-            self.feature_frequencies[feature] = (np.array(frequencies) /
-                                                 float(sum(frequencies)))
-            self.scaler.mean_[feature] = 0
-            self.scaler.scale_[feature] = 1
+            self.feature_frequencies[feature] = (np.array(frequencies) / float(sum(frequencies)))
+
+            if self.scaling:
+                self.scaler.mean_[feature] = 0
+                self.scaler.scale_[feature] = 1
+
 
     @staticmethod
     def convert_and_round(values):
@@ -232,44 +226,34 @@ class LimeTabularExplainer(object):
                          model_regressor=None):
         """Generates explanations for a prediction.
 
-        First, we generate neighborhood data by randomly perturbing features
-        from the instance (see __data_inverse). We then learn locally weighted
-        linear models on this neighborhood data to explain each of the classes
-        in an interpretable way (see lime_base.py).
+        First, we generate neighborhood data by randomly perturbing features from the instance (see __data_inverse).
+        We then learn locally weighted linear models on this neighborhood data to explain each of the classes in an
+        interpretable way (see lime_base.py).
 
         Args:
             data_row: 1d numpy array, corresponding to a row
-            predict_fn: prediction function. For classifiers, this should be a
-                function that takes a numpy array and outputs prediction
-                probabilities. For regressors, this takes a numpy array and
-                returns the predictions. For ScikitClassifiers, this is
-                `classifier.predict_proba()`. For ScikitRegressors, this
-                is `regressor.predict()`. The prediction function needs to work
-                on multiple feature vectors (the vectors randomly perturbed
-                from the data_row).
+            predict_fn: prediction function. For classifiers, this should be a function that takes a numpy array
+                        and outputs prediction probabilities. For regressors, this takes a numpy array and returns
+                        the predictions. For ScikitClassifiers, this is `classifier.predict_proba()`. For
+                        ScikitRegressors, this is `regressor.predict()`. The prediction function needs to work on
+                        multiple feature vectors (the vectors randomly perturbed from the data_row).
             labels: iterable with labels to be explained.
-            top_labels: if not None, ignore labels and produce explanations for
-                the K labels with highest prediction probabilities, where K is
-                this parameter.
+            top_labels: if not None, ignore labels and produce explanations for the K labels with highest prediction
+                        probabilities, where K is this parameter.
             num_features: maximum number of features present in explanation
             num_samples: size of the neighborhood to learn the linear model
             distance_metric: the distance metric to use for weights.
-            model_regressor: sklearn regressor to use in explanation. Defaults
-                to Ridge regression in LimeBase. Must have model_regressor.coef_
-                and 'sample_weight' as a parameter to model_regressor.fit()
+            model_regressor: sklearn regressor to use in explanation. Defaults to Ridge regression in LimeBase.
+                             Must have model_regressor.coef_ and 'sample_weight' as a parameter to model_regressor.fit()
 
         Returns:
             An Explanation object (see explanation.py) with the corresponding
             explanations.
         """
         data, inverse = self.__data_inverse(data_row, num_samples)
-        scaled_data = (data - self.scaler.mean_) / self.scaler.scale_
+        scaled_data = (data - self.scaler.mean_) / self.scaler.scale_ if self.scaling else data
 
-        distances = sklearn.metrics.pairwise_distances(
-                scaled_data,
-                scaled_data[0].reshape(1, -1),
-                metric=distance_metric
-        ).ravel()
+        distances = sklearn.metrics.pairwise_distances(scaled_data, scaled_data[0].reshape(1, -1), metric=distance_metric).ravel()
 
         yss = predict_fn(inverse)
 
@@ -378,9 +362,7 @@ class LimeTabularExplainer(object):
 
         return ret_exp
 
-    def __data_inverse(self,
-                       data_row,
-                       num_samples):
+    def __data_inverse(self, data_row, num_samples):
         """Generates a neighborhood around a prediction.
 
         For numerical features, perturb them by sampling from a Normal(0,1) and
@@ -405,13 +387,14 @@ class LimeTabularExplainer(object):
         data = np.zeros((num_samples, data_row.shape[0]))
         categorical_features = range(data_row.shape[0])
         if self.discretizer is None:
-            data = self.random_state.normal(
-                    0, 1, num_samples * data_row.shape[0]).reshape(
-                    num_samples, data_row.shape[0])
+            data = self.random_state.normal(0, 1, num_samples * data_row.shape[0]).reshape(num_samples, data_row.shape[0])
             if self.sample_around_instance:
                 data = data * self.scaler.scale_ + data_row
             else:
                 data = data * self.scaler.scale_ + self.scaler.mean_
+            # Upper capping and lower capping
+            for i in range(data_row.shape[0]):
+                data[:,i] = np.clip(data[:,i], a_min=self.lower_limit[i] ,a_max = self.upper_limit[i])
             categorical_features = self.categorical_features
             first_row = data_row
         else:
@@ -421,10 +404,8 @@ class LimeTabularExplainer(object):
         for column in categorical_features:
             values = self.feature_values[column]
             freqs = self.feature_frequencies[column]
-            inverse_column = self.random_state.choice(values, size=num_samples,
-                                                      replace=True, p=freqs)
-            binary_column = np.array([1 if x == first_row[column]
-                                      else 0 for x in inverse_column])
+            inverse_column = self.random_state.choice(values, size = num_samples, replace = True, p = freqs)
+            binary_column = np.array([1 if x == first_row[column] else 0 for x in inverse_column])
             binary_column[0] = 1
             inverse_column[0] = data[0, column]
             data[:, column] = binary_column
