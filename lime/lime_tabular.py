@@ -185,7 +185,6 @@ class LimeTabularExplainer(object):
         self.base = lime_base.LimeBase(kernel, verbose, random_state=self.random_state)
 
         self.scaler = sklearn.preprocessing.StandardScaler(with_mean=False)
-        self.scaler = None
         self.scaler.fit(training_data)
 
 
