@@ -17,6 +17,7 @@ from lime.discretize import EntropyDiscretizer
 from lime.discretize import BaseDiscretizer
 from . import explanation
 from . import lime_base
+from scipy.stats import truncnorm
 
 
 class TableDomainMapper(explanation.DomainMapper):
@@ -316,8 +317,7 @@ class LimeTabularExplainer(object):
             discretized_instance = self.discretizer.discretize(data_row)
             discretized_feature_names = copy.deepcopy(feature_names)
             for f in self.discretizer.names:
-                discretized_feature_names[f] = self.discretizer.names[f][int(
-                        discretized_instance[f])]
+                discretized_feature_names[f] = self.discretizer.names[f][int(discretized_instance[f])]
 
         domain_mapper = TableDomainMapper(feature_names,
                                           values,
@@ -384,14 +384,15 @@ class LimeTabularExplainer(object):
         data = np.zeros((num_samples, data_row.shape[0]))
         categorical_features = range(data_row.shape[0])
         if self.discretizer is None:
-            data = self.random_state.normal(0, 1, num_samples * data_row.shape[0]).reshape(num_samples, data_row.shape[0])
             if self.sample_around_instance:
-                data = data * self.scaler.scale_ + data_row
+                data = truncnorm.rvs(a = 0,b = 1,
+                                     loc = [data_row[i] if data_row[i] + self.scaler.scale_[i] < 1 else 1 - self.scaler.scale_[i] for i in range(data_row.shape[0])],
+                                     scale = self.scaler.scale_, size = (num_samples, data_row.shape[0]))
             else:
-                data = data * self.scaler.scale_ + self.scaler.mean_
+                data = truncnorm.rvs(a = 0, b = 1,loc = self.scaler.mean_, scale=self.scaler.scale_, size = (num_samples, data_row.shape[0]))
             # Upper capping and lower capping
             for i in range(data_row.shape[0]):
-                data[:,i] = np.clip(data[:,i], a_min=self.lower_limit[i] ,a_max = self.upper_limit[i])
+                data[:,i] = np.clip(data[:,i], a_min = self.lower_limit[i] ,a_max = self.upper_limit[i])
             categorical_features = self.categorical_features
             first_row = data_row
         else:
