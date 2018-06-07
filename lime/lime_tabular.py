@@ -385,11 +385,13 @@ class LimeTabularExplainer(object):
         categorical_features = range(data_row.shape[0])
         if self.discretizer is None:
             if self.sample_around_instance:
-                data = truncnorm.rvs(a = 0,b = 1,
+                data = truncnorm.rvs(a = -1,b = 1,
                                      loc = [data_row[i] if data_row[i] + self.scaler.scale_[i] < 1 else 1 - self.scaler.scale_[i] for i in range(data_row.shape[0])],
-                                     scale = self.scaler.scale_, size = (num_samples, data_row.shape[0]))
+                                     scale = self.scaler.scale_, size = (num_samples, data_row.shape[0]),
+                                     random_state = self.random_state)
             else:
-                data = truncnorm.rvs(a = 0, b = 1,loc = self.scaler.mean_, scale=self.scaler.scale_, size = (num_samples, data_row.shape[0]))
+                data = truncnorm.rvs(a = -1, b = 1,loc = self.scaler.mean_, scale=self.scaler.scale_,
+                                     size = (num_samples, data_row.shape[0]), random_state = self.random_state)
             # Upper capping and lower capping
             for i in range(data_row.shape[0]):
                 data[:,i] = np.clip(data[:,i], a_min = self.lower_limit[i] ,a_max = self.upper_limit[i])
